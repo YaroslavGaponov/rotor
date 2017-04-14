@@ -111,7 +111,8 @@ switch (cmd) {
                     case 'ready':
                         nodes.push(message.body.id);
                         console.log(`Node ${message.body.id} is ready`);
-                        if (!isRun && nodes.length === cluster.size()) {                            
+                        if (!isRun && nodes.length === cluster.size()) {
+                            console.log('Cluster is ready. Go!');
                             isRun = true;
                             run();
                         }
