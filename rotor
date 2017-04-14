@@ -41,6 +41,9 @@ switch (cmd) {
     
     case 'run':
     {
+        const broker = new Broker({port: 9999});
+        broker.start();        
+
        const dir = path.resolve(process.argv[3]);
        const acc = new Map();
         
@@ -49,12 +52,9 @@ switch (cmd) {
             .deploy(['./bundle', dir])
             .run('./bundle/run', [dir, getExternalIP(), 9999]);                
         
-        const broker = new Broker({port: 9999});
-        broker.start();        
         
         const client = new Client({port: 9999});        
         
-
         function run() {
             process.stdin.setEncoding('utf8');
             
@@ -85,9 +85,20 @@ switch (cmd) {
                 }
             }, 1000);
         }
-        
+
+        process.on('SIGINT', function() {
+            client.unsubscribe(common.TYPE.QUEUE, 'ready');
+            client.unsubscribe(common.TYPE.QUEUE, 'shuffler');
+            client.unsubscribe(common.TYPE.QUEUE, 'result');                    
+            client.send(common.CMD.TOPIC, 'shutdown');
+            client.close();
+            broker.stop();
+            process.exit();
+        });
+
         let isRun = false;
         let isDone = false;
+        let nodes = [];
         
         client.open()
             .on('connected', () => {
@@ -95,20 +106,18 @@ switch (cmd) {
                 client.subscribe(common.TYPE.QUEUE, 'shuffler');
                 client.subscribe(common.TYPE.QUEUE, 'result');        
             })
-            .on('message', (message) => {                
+            .on('message', (message) => {
                 switch (message.name) {
                     case 'ready':
+                        nodes.push(message.body.id);
                         console.log(`Node ${message.body.id} is ready`);
-                        if (!isRun) {
+                        if (!isRun && nodes.length === cluster.size()) {                            
                             isRun = true;
                             run();
                         }
                         break;
                     case 'result' :
-                        client.send(common.TYPE.TOPIC,'shutdown');
                         console.log(message.body.key, message.body.value);
-                        client.close();
-                        broker.stop();
                         break;
                     case 'shuffler':
                         spy();

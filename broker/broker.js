@@ -52,18 +52,9 @@ class Broker {
                         }
                     }
                 })
-                .on('error', () => {
-                    this.sockets.delete(id);
-                    for(let type in common.TYPE) {
-                        for (let [name, subscribers] of this.subscribers.get(type)) {
-                            let indx = subscribers.indexOf(id);
-                            if (indx !== -1) {
-                                subscribers.splice(indx, 1);
-                                this.subscribers.get(type).set(name, subscribers);
-                            }
-                        }
-                    }
-                });
+                .on('error', (err) => {
+                    console.log(err);
+                })
         });        
     }
     

@@ -4,13 +4,13 @@ const net = require('net');
 const EventEmitter = require('events');
 const common = require('./common');
 
-const TIMEOUT = 1000;
+const TIMEOUT = 3000;
 
 class Client extends EventEmitter {
     constructor(options) {
         super();
         this.options = options;
-        this.on('error', () => {
+        this.on('try_again', () => {
             setTimeout(() => {
                 this.open();
             }, TIMEOUT);
@@ -41,7 +41,7 @@ class Client extends EventEmitter {
         .on('end', () => {
         })
         .on('error', () => {
-            this.emit('error');
+            this.emit('try_again');
         });
         return this;
     }
@@ -59,6 +59,16 @@ class Client extends EventEmitter {
     subscribe(type, name) {
         const frame = {
             cmd: common.CMD.SUBSCRIBE,
+            type: type,
+            name: name
+        };
+        this._send(frame);
+        return this;
+    }
+
+    unsubscribe(type, name) {
+        const frame = {
+            cmd: common.CMD.UNSUBSCRIBE,
             type: type,
             name: name
         };

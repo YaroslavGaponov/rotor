@@ -36,6 +36,9 @@ client.on('connected', () => {
                 client.send('QUEUE', 'result', Reducer(message.body.key, message.body.values));
                 break;
             case 'shutdown':
+                client.unsubscribe('TOPIC', 'shutdown');
+                client.unsubscribe('QUEUE', 'mapper');
+                client.unsubscribe('QUEUE', 'reducer');
                 client.close();
                 process.exit();
         }    
