@@ -1,0 +1,128 @@
+#!/bin/env node
+
+'use strict';
+
+const os = require('os');
+const path = require('path');
+
+const Cluster = require('./cluster/cluster');
+const Broker = require('./broker/broker');
+const Client = require('./broker/client');
+const common = require('./broker/common')
+
+const DB = './cluster.db';
+
+function getExternalIP() {
+    let interfaces = os.networkInterfaces();
+    for(let name  in interfaces) {
+        if (name.startsWith('eth')) {
+            return interfaces[name].filter(i => {return !i.internal; }).filter(i => {return i.family === 'IPv4'}).pop().address;
+        }
+    }
+}
+
+var cmd = process.argv[2];
+switch (cmd) {
+    case 'add':{
+        const cluster = new Cluster(DB);
+        const host = process.argv[3];
+        const user = process.argv[4];
+        const pass = process.argv[5];
+        cluster.add(host, user, pass);
+        break;
+    }
+    
+    case 'remove': {
+        const cluster = new Cluster(DB);
+        const host = process.argv[3];
+        cluster.remove(host);
+        break;
+    }
+    
+    case 'run':
+    {
+       const dir = path.resolve(process.argv[3]);
+       const acc = new Map();
+        
+        const cluster = new Cluster(DB);
+        cluster
+            .deploy(['./bundle', dir])
+            .run('./bundle/run', [dir, getExternalIP(), 9999]);                
+        
+        const broker = new Broker({port: 9999});
+        broker.start();        
+        
+        const client = new Client({port: 9999});        
+        
+
+        function run() {
+            process.stdin.setEncoding('utf8');
+            
+            process.stdin.on('readable', () => {
+              const chunk = process.stdin.read();
+              if (chunk !== null) {
+                chunk.toString().split(os.EOL).forEach(line => {
+                    if (line !== '') {                        
+                        client.send(common.TYPE.QUEUE, 'mapper', line);
+                    }                    
+                });                
+              }          
+            });
+        }
+        
+        let id;
+        function spy() {
+            if (id) {
+                clearTimeout(id);
+            }
+            if (isDone) {
+                return;
+            }
+            id = setTimeout(() => {
+                isDone = true;
+                for(let [key, values] of acc) {
+                      client.send(common.TYPE.QUEUE, 'reducer', {key: key, values: values});
+                }
+            }, 1000);
+        }
+        
+        let isRun = false;
+        let isDone = false;
+        
+        client.open()
+            .on('connected', () => {
+                client.subscribe(common.TYPE.QUEUE, 'ready');
+                client.subscribe(common.TYPE.QUEUE, 'shuffler');
+                client.subscribe(common.TYPE.QUEUE, 'result');        
+            })
+            .on('message', (message) => {                
+                switch (message.name) {
+                    case 'ready':
+                        console.log(`Node ${message.body.id} is ready`);
+                        if (!isRun) {
+                            isRun = true;
+                            run();
+                        }
+                        break;
+                    case 'result' :
+                        client.send(common.TYPE.TOPIC,'shutdown');
+                        console.log(message.body.key, message.body.value);
+                        client.close();
+                        broker.stop();
+                        break;
+                    case 'shuffler':
+                        spy();
+                        if (acc.has(message.body.key)) {
+                            acc.get(message.body.key).push(message.body.value);
+                        } else {
+                            acc.set(message.body.key, [message.body.value]);
+                        }
+                        break;    
+                }            
+            });        
+        break;
+    }
+}
+
+
+

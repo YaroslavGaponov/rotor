@@ -1,0 +1,43 @@
+#!/bin/env node
+
+const Client = require('./client');
+
+const id  = Math.random().toString(26).slice(2);
+
+const path = process.argv[2];
+const Mapper = require(path + '/mapper');
+const Reducer = require(path + '/reducer');
+
+const host = process.argv[3] || 'localhost';
+const port = process.argv[4] || 9999;
+
+
+const client = new Client({hostname: host, port: port});
+
+client.open();
+
+client.on('connected', () => {
+    console.log('connected ', id);
+
+    client.send('QUEUE','ready',{id: id});
+
+    client.subscribe('TOPIC', 'shutdown');
+    client.subscribe('QUEUE', 'mapper');
+    client.subscribe('QUEUE', 'reducer');
+    
+    client.on('message', (message) => {
+        switch (message.name) {            
+            case 'mapper':                                
+                Mapper(message.body).forEach(m => {
+                    client.send('QUEUE', 'shuffler', m);
+                })
+                break;
+            case 'reducer':
+                client.send('QUEUE', 'result', Reducer(message.body.key, message.body.values));
+                break;
+            case 'shutdown':
+                client.close();
+                process.exit();
+        }    
+    });
+});
