@@ -10,39 +10,41 @@ class Client extends EventEmitter {
     constructor(options) {
         super();
         this.options = options;
+        this.queue = [];
         this.on('try_again', () => {
             setTimeout(() => {
                 this.open();
             }, TIMEOUT);
         })
     }
-    
+        
     open() {
         let acc = '';
+
         this.client = net.createConnection(this.options, () => {
             this.emit('connected');
         })
         .on('data', (chunk) => {
-            acc += chunk;
-            const pieces = acc.split(common.DELIMITER).filter(Boolean);
-            let piece = '';
-                done: while (pieces.length > 0) {
+            acc += chunk.toString();
+            const pieces = acc.split(common.DELIMITER);
+            let piece;
+            while (pieces.length > 0) {                
+                try {
                     piece = pieces.shift();
-                    try {
-                        let message = JSON.parse(piece);
-                        this.emit('message', message);
-                    } catch (ex) {
-                        pieces.shift(piece);
-                        break done;
-                    }
+                    this.emit('message', JSON.parse(piece));
+                } catch (ex) {
+                    pieces.unshift(piece);
+                    break;
                 }
-                acc = pieces.join(common.DELIMITER);
+            }
+            acc = pieces.join(common.DELIMITER);
         })
         .on('end', () => {
         })
         .on('error', () => {
             this.emit('try_again');
-        });
+        })
+        .setEncoding('utf8');
         return this;
     }
     
@@ -50,9 +52,21 @@ class Client extends EventEmitter {
         this.client.end();
         return this;
     }
-    
+
+    __send() {
+        if (this.queue.length === 0) {
+            return;
+        } else {        
+            const frame = this.queue.shift();
+            this.client.write(JSON.stringify(frame) + common.DELIMITER, 'utf8',() => {
+                this.__send();
+            })
+        }
+    }
+
     _send(frame) {
-        this.client.write(JSON.stringify(frame) + common.DELIMITER);
+        this.queue.push(frame);
+        this.__send();
         return this;
     }
 
@@ -76,7 +90,7 @@ class Client extends EventEmitter {
         return this;
     }
 
-    send(type, name, body) {
+    send(type, name, body={}) {
         const frame = {
             cmd: common.CMD.SEND,
             type: type,

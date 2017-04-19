@@ -1,6 +1,6 @@
 module.exports = {
 
-    DELIMITER: '<END>',
+    DELIMITER: '\n<END>\n',
 
     TYPE: Object.freeze({
         QUEUE: 'QUEUE',

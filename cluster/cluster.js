@@ -33,7 +33,11 @@ class Cluster {
     run(cmd, args) {
         let hosts = fs.readFileSync(this.fileName, 'utf8').split(os.EOL);
         hosts.forEach(host =>{
-            cp.spawn(cmd, args);
+            try {
+                cp.spawn(cmd, args);
+            } catch (ex) {
+                console.log(ex);
+            }
         });        
         return this;
     }

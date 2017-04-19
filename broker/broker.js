@@ -14,31 +14,29 @@ class Broker {
             this.subscribers.set(type, new Map());
         }
 
-        this.server =  net.createServer(socket => {
+        this.server =  net.createServer({allowHalfOpen: true,pauseOnConnect: false},socket => {
+            socket.setEncoding('utf8');
+            socket.setKeepAlive(true);            
 
             const id = Math.random().toString(26).slice(2);
             this.sockets.set(id, socket);
 
-            let acc = '';
+            let acc = '';            
             socket
                 .on('data', (chunk) => {
                     acc += chunk.toString();
-                    let pieces = acc.split(common.DELIMITER).filter(Boolean);                                        
-                        done: while (pieces.length > 0) {
-                            var piece = pieces.shift();
-                            try {
-                                const message = JSON.parse(piece);
-                                let ok = this._handler(id, socket, message);
-                                if (!ok) {
-                                    pieces.unshift(piece);
-                                    break done;
-                                }
-                            } catch (ex) {                                
-                                pieces.unshift(piece);
-                                break done;
-                            }
-                        }
-                        acc = pieces.join(common.DELIMITER);
+                    const pieces = acc.split(common.DELIMITER);
+                    let piece;
+                    while (pieces.length > 0) {                        
+                        try {
+                            piece = pieces.shift();
+                            this._handler(id, socket, JSON.parse(piece));
+                        } catch (ex) {
+                            pieces.unshift(piece);
+                            break;
+                        }                        
+                    }
+                    acc = pieces.join(common.DELIMITER);
                 })
                 .on('end', () => {                    
                     this.sockets.delete(id);
@@ -59,12 +57,12 @@ class Broker {
     }
     
     _handler(id, socket, message) {
-        const {cmd, type, name, body} = message;
+        const {cmd, type, name, body, sessionId} = message;
         const subscribers = this.subscribers.get(type).has(name) ? this.subscribers.get(type).get(name) : [];
         switch (cmd) {
             case common.CMD.SEND:
                 if (subscribers.length > 0) {
-                    const frame = {type, name, body};
+                    const frame = {type, name, body, sessionId};
                     switch (type) {                        
                         case common.TYPE.QUEUE:
                             const id = subscribers.shift();

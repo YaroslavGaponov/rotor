@@ -1,7 +1,9 @@
 
 module.exports = (text) => {
-    return text
-        .split(/[\s]+/gi)
+    return String(text)
+        .split(/[\s\.\,\?\!\:\"\'\`\{\}\(\)\;\[\]\|\\\/]+/)
+        .filter(Boolean)
+        .filter(isNaN)
         .map(w => {
             return {
                 key: w.toLowerCase(),
