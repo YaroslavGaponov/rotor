@@ -1,7 +1,8 @@
 'use strict';
 
 const net = require('net');
-const common = require('./common');
+const Common = require('./common');
+const Queue = require('./queue');
 
 class Broker {
     constructor(options) {
@@ -10,7 +11,7 @@ class Broker {
         this.sockets = new Map();
 
         this.subscribers = new Map();
-        for(let type in common.TYPE) {
+        for(let type in Common.TYPE) {
             this.subscribers.set(type, new Map());
         }
 
@@ -19,13 +20,19 @@ class Broker {
             socket.setKeepAlive(true);            
 
             const id = Math.random().toString(26).slice(2);
-            this.sockets.set(id, socket);
+
+            const queue = new Queue();            
+            queue.addHandler((frame, done) => {
+                socket.write(JSON.stringify(frame) + Common.DELIMITER, 'utf8', done);
+            });
+
+            this.sockets.set(id, queue);
 
             let acc = '';            
             socket
                 .on('data', (chunk) => {
                     acc += chunk.toString();
-                    const pieces = acc.split(common.DELIMITER);
+                    const pieces = acc.split(Common.DELIMITER);
                     let piece;
                     while (pieces.length > 0) {                        
                         try {
@@ -36,11 +43,11 @@ class Broker {
                             break;
                         }                        
                     }
-                    acc = pieces.join(common.DELIMITER);
+                    acc = pieces.join(Common.DELIMITER);
                 })
                 .on('end', () => {                    
                     this.sockets.delete(id);
-                    for(let type in common.TYPE) {
+                    for(let type in Common.TYPE) {
                         for (let [name, subscribers] of this.subscribers.get(type)) {
                             let indx = subscribers.indexOf(id);
                             if (indx !== -1) {
@@ -60,20 +67,20 @@ class Broker {
         const {cmd, type, name, body, sessionId} = message;
         const subscribers = this.subscribers.get(type).has(name) ? this.subscribers.get(type).get(name) : [];
         switch (cmd) {
-            case common.CMD.SEND:
+            case Common.CMD.SEND:
                 if (subscribers.length > 0) {
                     const frame = {type, name, body, sessionId};
                     switch (type) {                        
-                        case common.TYPE.QUEUE:
+                        case Common.TYPE.QUEUE:
                             const id = subscribers.shift();
                             subscribers.push(id);
                             this.subscribers.get(type).set(name, subscribers);
-                            this.sockets.get(id).write(JSON.stringify(frame) + common.DELIMITER);
+                            this.sockets.get(id).addMessage(frame);
                             break;
 
-                        case common.TYPE.TOPIC:
+                        case Common.TYPE.TOPIC:
                             subscribers.forEach(id => {
-                                this.sockets.get(id).write(JSON.stringify(frame) + common.DELIMITER);
+                                this.sockets.get(id).addMessage(frame);
                             });
                             break;
                     }
@@ -83,14 +90,14 @@ class Broker {
                 
                 break;
 
-            case common.CMD.SUBSCRIBE:
+            case Common.CMD.SUBSCRIBE:
                 if (subscribers.indexOf(id) === -1) {
                     subscribers.push(id);
                     this.subscribers.get(type).set(name, subscribers);
                 }
                 break;
 
-            case common.CMD.UNSUBSCRIBE:
+            case Common.CMD.UNSUBSCRIBE:
                 const indx = subscribers.indexOf(id);
                 if (indx !== -1) {
                     subscribers.splice(indx, 1);
@@ -111,7 +118,3 @@ class Broker {
 }
 
 module.exports = Broker;
-/*
-const broker = new Broker({port: 9999});
-broker.start();
-*/

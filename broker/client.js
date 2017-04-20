@@ -2,15 +2,15 @@
 
 const net = require('net');
 const EventEmitter = require('events');
-const common = require('./common');
-
+const Common = require('./common');
+const Queue = require('./queue');
 const TIMEOUT = 3000;
 
 class Client extends EventEmitter {
     constructor(options) {
         super();
         this.options = options;
-        this.queue = [];
+        this.queue = new Queue();
         this.on('try_again', () => {
             setTimeout(() => {
                 this.open();
@@ -21,12 +21,15 @@ class Client extends EventEmitter {
     open() {
         let acc = '';
 
-        this.client = net.createConnection(this.options, () => {
+        this.client = net.createConnection(this.options, () => {            
+            this.queue.addHandler((frame, done) => {
+                this.client.write(JSON.stringify(frame) + Common.DELIMITER, 'utf8', done);
+            });
             this.emit('connected');
         })
         .on('data', (chunk) => {
             acc += chunk.toString();
-            const pieces = acc.split(common.DELIMITER);
+            const pieces = acc.split(Common.DELIMITER);
             let piece;
             while (pieces.length > 0) {                
                 try {
@@ -37,7 +40,7 @@ class Client extends EventEmitter {
                     break;
                 }
             }
-            acc = pieces.join(common.DELIMITER);
+            acc = pieces.join(Common.DELIMITER);
         })
         .on('end', () => {
         })
@@ -53,26 +56,14 @@ class Client extends EventEmitter {
         return this;
     }
 
-    __send() {
-        if (this.queue.length === 0) {
-            return;
-        } else {        
-            const frame = this.queue.shift();
-            this.client.write(JSON.stringify(frame) + common.DELIMITER, 'utf8',() => {
-                this.__send();
-            })
-        }
+    _send(frame) {
+        this.queue.addMessage(frame);
     }
 
-    _send(frame) {
-        this.queue.push(frame);
-        this.__send();
-        return this;
-    }
 
     subscribe(type, name) {
         const frame = {
-            cmd: common.CMD.SUBSCRIBE,
+            cmd: Common.CMD.SUBSCRIBE,
             type: type,
             name: name
         };
@@ -82,7 +73,7 @@ class Client extends EventEmitter {
 
     unsubscribe(type, name) {
         const frame = {
-            cmd: common.CMD.UNSUBSCRIBE,
+            cmd: Common.CMD.UNSUBSCRIBE,
             type: type,
             name: name
         };
@@ -92,7 +83,7 @@ class Client extends EventEmitter {
 
     send(type, name, body={}) {
         const frame = {
-            cmd: common.CMD.SEND,
+            cmd: Common.CMD.SEND,
             type: type,
             name: name,
             body: body
@@ -103,14 +94,3 @@ class Client extends EventEmitter {
 }
 
 module.exports = Client;
-
-/*
-const client = new Client({port: 9999});
-client.open();
-client.subscribe(common.TYPE.QUEUE, 'queue1');
-client.on('NewMessage', (body) => {
-    console.log(body);
-});
-client.send(common.TYPE.QUEUE, 'queue1', {time: Date()});
-*/
-//client.close();
