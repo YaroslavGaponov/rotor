@@ -8,7 +8,7 @@ const path = require('path');
 const Cluster = require('./cluster/cluster');
 const Broker = require('./broker/broker');
 const Client = require('./broker/request');
-const common = require('./broker/common')
+const Common = require('./broker/common')
 
 const DB = './cluster.db';
 
@@ -46,6 +46,7 @@ switch (cmd) {
         broker.start();        
 
        const dir = path.resolve(process.argv[3]);
+       const argument = process.argv[4];
        
         const cluster = new Cluster(DB);
         cluster
@@ -56,10 +57,10 @@ switch (cmd) {
         const client = new Client({port: 9999});
                 
         process.on('SIGINT', function() {
-            client.unsubscribe(common.TYPE.QUEUE, 'ready');
-            client.unsubscribe(common.TYPE.QUEUE, 'result');
+            client.unsubscribe(Common.TYPE.QUEUE, 'ready');
+            client.unsubscribe(Common.TYPE.QUEUE, 'result');
             
-            client.send(common.CMD.TOPIC, 'shutdown');
+            client.send(Common.CMD.TOPIC, 'shutdown');
             
             client.close();
             broker.stop();
@@ -71,8 +72,8 @@ switch (cmd) {
         
         client.open()
             .on('connected', () => {
-                client.subscribe(common.TYPE.QUEUE, 'ready');
-                client.subscribe(common.TYPE.QUEUE, 'result');        
+                client.subscribe(Common.TYPE.QUEUE, 'ready');
+                client.subscribe(Common.TYPE.QUEUE, 'result');        
             })
             .on('message', (message) => {
                 switch (message.name) {
@@ -82,22 +83,21 @@ switch (cmd) {
                         if (nodes.length === cluster.size()) {
                             console.log('Cluster is ready. Go!');
                             
-                            client.send(common.TYPE.TOPIC, 'info', { nodes: nodes });
+                            client.send(Common.TYPE.TOPIC, 'info', { nodes: nodes });
                             
                             process.stdin.setEncoding('utf8');
+                            let line = 0;
                             let counter = 0;
                             process.stdin.on('readable', () => {
                               const chunk = process.stdin.read();
                               if (chunk) {
-                                chunk.toString().split(os.EOL).forEach(line => {
-                                    if (line != '') {
+                                chunk.toString().split(os.EOL).filter(Boolean).forEach(value => {                                        
                                         counter++;
-                                        client.query('mapper', line, () => {
+                                        client.query('mapper', { line: line++, value: value, argument: argument }, () => {
                                             if (--counter === 0) {
-                                                client.send(common.TYPE.TOPIC, 'continue');
+                                                client.send(Common.TYPE.TOPIC, 'continue');
                                             }                        
-                                        });
-                                    }
+                                        });                                    
                                 });                
                               }
                             });                            
@@ -106,7 +106,7 @@ switch (cmd) {
                     }
                     
                     case 'result' : {
-                        console.log(message.body.key, ' -> ', message.body.value);
+                        console.log(`${message.body.key} -> ${message.body.value}`);
                         break;
                     }
                 }            

@@ -13,6 +13,19 @@ const Reducer = require(path + '/reducer');
 const host = process.argv[3] || 'localhost';
 const port = process.argv[4] || 9999;
 
+function hashCode(s) {
+    s = String(s);
+    let ch, hash = 0;
+    if (s.length == 0) return hash;
+    var length = s.length <= 32 ? s.length : 32;
+    for (let i=0; i<length; i++) {
+        ch = s.charCodeAt(i);
+        hash = ((hash << 5) - hash) + ch;
+        hash = hash & hash;
+    }
+    return hash & 0x7fffffff;
+}
+
 
 const client = new Client({hostname: host, port: port});
 
@@ -42,18 +55,21 @@ client.open()
 
                 case 'mapper': {
                     const result = Mapper(message.body);
-                    let counter = result.length;
-                    result.forEach(m => {
-                        const name = nodes[m.key.charCodeAt(0) % nodes.length];
-                        client.query(name, m, () => {
-                            if (--counter === 0) {
-                               client.response(message.sessionId); 
-                            }
+                    if (result && result.length > 0) {
+                        let counter = result.length;
+                        result.forEach(m => {
+                            const name = nodes[hashCode(m.key) % nodes.length];
+                            client.query(name, m, () => {
+                                if (--counter === 0) {
+                                   client.response(message.sessionId); 
+                                }
+                            });
                         });
-                    });
+                    } else {
+                        client.response(message.sessionId);
+                    }
                     break;
                 }
-
                 case id: {
                     if (shuffler.has(message.body.key)) {
                         shuffler.get(message.body.key).push(message.body.value);

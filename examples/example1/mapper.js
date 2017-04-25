@@ -1,6 +1,6 @@
 
-module.exports = (text) => {
-    return String(text)
+module.exports = (data) => {
+    return String(data.value)
         .split(/[\s\.\,\?\!\:\"\'\`\{\}\(\)\;\[\]\|\\\/]+/)
         .filter(Boolean)
         .filter(isNaN)

@@ -31,7 +31,7 @@ class Queue {
             const message = this.messages.shift();
             this.handler(message, () => {
                 this._run();
-            })
+            });
         } else {
             this.locker = false;
         }

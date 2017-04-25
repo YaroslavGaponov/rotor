@@ -17,4 +17,9 @@ Calculate PI
 ```
 for((i=1;i<=1000;i++)); do echo "$i"; done | ./rotor run ./examples/example2
 
-``` 
+```
+
+Search word in text
+```
+cat ./examples/example3/book.txt | ./rotor run ./exampl/example3 the
+```

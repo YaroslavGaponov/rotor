@@ -1,5 +1,5 @@
 
-module.exports = (text) => {
+module.exports = () => {
     var x = Math.random();
     var y = Math.random();
     return [{
